@@ -28,9 +28,9 @@ export class BookingController {
             throw new AppError("Room not found", 404);
         }
 
-        if (room.status !== "available") {
-            throw new AppError("Room is not available for booking", 400);
-        }
+        // if (room.status !== "available") {
+        //     throw new AppError("Room is not available for booking", 400);
+        // }
 
         // Check if room capacity is sufficient
         if (room.capacity < bookingData.guests) {
@@ -84,8 +84,11 @@ export class BookingController {
             await mailService.sendNewBookingNotification(admin, bookingWithRelations);
         }
 
+        if (bookingWithRelations && bookingWithRelations.user) {
+            const { password, role, ...userWithoutPassword } = bookingWithRelations.user;
+            bookingWithRelations.user = userWithoutPassword as User;
+        }
         
-
         return res.status(201).json({
             status: "success",
             data: bookingWithRelations
