@@ -3,6 +3,7 @@ import { IsEmail, IsNotEmpty, MinLength } from "class-validator";
 import { Booking } from "./Booking";
 import { Stay } from "./Stay";
 import { Review } from "./Review";
+import { Payment } from "./Payment";
 
 export enum UserRole {
     ADMIN = "admin",
@@ -43,6 +44,9 @@ export class User extends BaseEntity {
 
     @OneToMany(() => Review, review => review.user)
     reviews!: Review[];
+
+    @OneToMany(() => Payment, payment => payment.user)
+    payments!: Payment[];
 
     @CreateDateColumn()
     createdAt!: Date;

@@ -7,6 +7,7 @@ import roomRoutes from "./routes/room.routes";
 import bookingRoutes from "./routes/booking.routes";
 import stayRoutes from "./routes/stay.routes";
 import reviewRoutes from "./routes/review.routes";
+import paymentRoutes from "./routes/payment.routes";
 import { createAdminUser } from "./config/admin.seeder";
 import { errorHandler } from "./middleware/error.middleware";
 import { AppError } from "./middleware/error.middleware";
@@ -41,6 +42,10 @@ app.use("/api/rooms", roomRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/stays", stayRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use('/api/payments', paymentRoutes);
+
+// Stripe webhook needs raw body
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), paymentRoutes);
 
 // Global error handler
 app.use(errorHandler);

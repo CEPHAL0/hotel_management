@@ -1,7 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, BaseEntity } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, BaseEntity, OneToMany } from "typeorm";
 import { IsNotEmpty, IsNumber, IsDate, Min, IsEnum } from "class-validator";
 import { User } from "./User";
 import { Room } from "./Room";
+import { Payment } from "./Payment";
 
 export enum BookingStatus {
     PENDING = "pending",
@@ -50,6 +51,9 @@ export class Booking extends BaseEntity {
     })
     @IsEnum(BookingStatus)
     status!: BookingStatus;
+
+    @OneToMany(() => Payment, payment => payment.booking)
+    payments!: Payment[];
 
     @CreateDateColumn()
     createdAt!: Date;
