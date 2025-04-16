@@ -1,6 +1,16 @@
 import { Booking, BookingStatus } from "../entities/Booking";
 import { PaymentService } from "../services/payment.service";
 import { AppDataSource } from "../config/database";
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Verify Stripe key is present
+if (!process.env.STRIPE_SECRET_KEY) {
+    console.error('STRIPE_SECRET_KEY is not set in environment variables');
+    process.exit(1);
+}
 
 async function testPayment() {
     try {

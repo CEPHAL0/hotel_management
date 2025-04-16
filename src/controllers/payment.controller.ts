@@ -2,7 +2,27 @@ import { Request, Response, NextFunction } from "express";
 import { PaymentService } from "../services/payment.service";
 import { Booking } from "../entities/Booking";
 import { AppError } from "../middleware/error.middleware";
-import {Stripe} from 'stripe';
+import { Stripe } from 'stripe';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    throw new Error('STRIPE_WEBHOOK_SECRET is not defined in environment variables');
+}
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: '2025-03-31.basil'
+});
+
+// Extend Express Request type to include rawBody
+declare global {
+    namespace Express {
+        interface Request {
+            rawBody?: Buffer;
+        }
+    }
+}
 
 export class PaymentController {
     static async createPaymentIntent(req: Request, res: Response, next: NextFunction) {
@@ -40,13 +60,31 @@ export class PaymentController {
     static async handleWebhook(req: Request, res: Response, next: NextFunction) {
         try {
             const sig = req.headers['stripe-signature'];
-            const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+
+            if (!sig) {
+                throw new AppError('No stripe signature found', 400);
+            }
+
+            const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+            if (!endpointSecret) {
+                throw new AppError('STRIPE_WEBHOOK_SECRET is not defined in environment variables', 500);
+            }
+
+            if (!req.rawBody) {
+                throw new AppError('No raw body found in request', 400);
+            }
 
             let event;
 
             try {
-                event = Stripe.webhooks.constructEvent(req.body, sig!, endpointSecret);
+                event = stripe.webhooks.constructEvent(
+                    req.rawBody,
+                    sig,
+                    endpointSecret
+                );
             } catch (err) {
+                console.error('Webhook signature verification failed:', err);
                 throw new AppError('Webhook signature verification failed', 400);
             }
 

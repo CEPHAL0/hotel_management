@@ -42,10 +42,22 @@ app.use("/api/rooms", roomRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/stays", stayRoutes);
 app.use("/api/reviews", reviewRoutes);
+
+// Regular payment routes with JSON body
 app.use('/api/payments', paymentRoutes);
 
-// Stripe webhook needs raw body
-app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), paymentRoutes);
+// Stripe webhook endpoint with raw body
+app.post(
+    '/api/payments/webhook',
+    express.raw({ type: 'application/json' }),
+    (req, res, next) => {
+        // Store the raw body for webhook verification
+        const rawBody = req.body;
+        req.rawBody = rawBody;
+        next();
+    },
+    paymentRoutes
+);
 
 // Global error handler
 app.use(errorHandler);

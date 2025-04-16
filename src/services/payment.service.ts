@@ -3,8 +3,15 @@ import { Payment, PaymentStatus } from '../entities/Payment';
 import { Booking, BookingStatus } from '../entities/Booking';
 import { Stay, StayStatus } from '../entities/Stay';
 import { AppError } from '../middleware/error.middleware';
+import dotenv from 'dotenv';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+dotenv.config();
+
+if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY is not defined in environment variables');
+}
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
     apiVersion: '2025-03-31.basil'
 });
 
@@ -12,7 +19,7 @@ export class PaymentService {
     static async createPaymentIntent(booking: Booking) {
         try {
             const paymentIntent = await stripe.paymentIntents.create({
-                amount: Math.round(booking.totalPrice),
+                amount: Math.round(booking.totalPrice * 100), // Convert to cents
                 currency: 'usd',
                 metadata: {
                     bookingId: booking.id.toString(),
