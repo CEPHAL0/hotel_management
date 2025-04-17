@@ -8,6 +8,9 @@ import bookingRoutes from "./routes/booking.routes";
 import stayRoutes from "./routes/stay.routes";
 import reviewRoutes from "./routes/review.routes";
 import paymentRoutes from "./routes/payment.routes";
+import profileRoutes from "./routes/profile.routes";
+import dashboardRoutes from "./routes/dashboard.routes";
+import adminRoutes from "./routes/admin.routes";
 import { createAdminUser } from "./config/admin.seeder";
 import { errorHandler } from "./middleware/error.middleware";
 import { AppError } from "./middleware/error.middleware";
@@ -42,6 +45,10 @@ app.use("/api/rooms", roomRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/stays", stayRoutes);
 app.use("/api/reviews", reviewRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/profile", profileRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Regular payment routes with JSON body
 app.use('/api/payments', paymentRoutes);

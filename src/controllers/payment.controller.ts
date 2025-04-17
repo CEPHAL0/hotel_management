@@ -4,6 +4,7 @@ import { Booking } from "../entities/Booking";
 import { AppError } from "../middleware/error.middleware";
 import { Stripe } from 'stripe';
 import dotenv from 'dotenv';
+import { Payment } from "../entities/Payment";
 
 dotenv.config();
 
@@ -97,5 +98,54 @@ export class PaymentController {
         } catch (error) {
             next(error);
         }
+    }
+
+    // Get all payments for the authenticated user
+    static async getPayments(req: Request, res: Response) {
+        const userId = req.user!.id;
+        const { page = 1, limit = 10 } = req.query;
+
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const [payments, total] = await Payment.findAndCount({
+            where: { user: { id: userId } },
+            relations: ['booking'],
+            order: { createdAt: 'DESC' },
+            skip,
+            take: Number(limit)
+        });
+
+        res.json({
+            status: 'success',
+            data: {
+                payments,
+                pagination: {
+                    total,
+                    page: Number(page),
+                    limit: Number(limit),
+                    pages: Math.ceil(total / Number(limit))
+                }
+            }
+        });
+    }
+
+    // Get payment details by ID
+    static async getPaymentById(req: Request, res: Response) {
+        const { id } = req.params;
+        const userId = req.user!.id;
+
+        const payment = await Payment.findOne({
+            where: { id: parseInt(id), user: { id: userId } },
+            relations: ['booking']
+        });
+
+        if (!payment) {
+            throw new AppError("Payment not found", 404);
+        }
+
+        res.json({
+            status: 'success',
+            data: payment
+        });
     }
 } 
