@@ -7,8 +7,8 @@ const { Payment } = require("../entities/Payment");
 
 dotenv.config();
 
-if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    throw new Error('STRIPE_WEBHOOK_SECRET is not defined in environment variables');
+if (!process.env.STRIPE_WEBHOOK_SECRET || !process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_WEBHOOK_SECRET or STRIPE_SECRET_KEY is not defined in environment variables');
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -51,13 +51,11 @@ class PaymentController {
     static async handleWebhook(req, res, next) {
         try {
             const sig = req.headers['stripe-signature'];
-
             if (!sig) {
-                throw new AppError('No stripe signature found', 400);
+                throw new AppError('No Stripe signature found', 400);
             }
 
             const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
             if (!endpointSecret) {
                 throw new AppError('STRIPE_WEBHOOK_SECRET is not defined in environment variables', 500);
             }
@@ -67,18 +65,14 @@ class PaymentController {
             }
 
             let event;
-
             try {
-                event = stripe.webhooks.constructEvent(
-                    req.rawBody,
-                    sig,
-                    endpointSecret
-                );
+                event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
             } catch (err) {
                 console.error('Webhook signature verification failed:', err);
                 throw new AppError('Webhook signature verification failed', 400);
             }
 
+            // Handle payment success
             if (event.type === 'payment_intent.succeeded') {
                 const paymentIntent = event.data.object;
                 await PaymentService.handlePaymentSuccess(paymentIntent.id);
@@ -97,26 +91,30 @@ class PaymentController {
 
         const skip = (Number(page) - 1) * Number(limit);
 
-        const [payments, total] = await Payment.findAndCount({
-            where: { user: { id: userId } },
-            relations: ['booking'],
-            order: { createdAt: 'DESC' },
-            skip,
-            take: Number(limit)
-        });
+        try {
+            const [payments, total] = await Payment.findAndCount({
+                where: { user: { id: userId } },
+                relations: ['booking'],
+                order: { createdAt: 'DESC' },
+                skip,
+                take: Number(limit)
+            });
 
-        res.json({
-            status: 'success',
-            data: {
-                payments,
-                pagination: {
-                    total,
-                    page: Number(page),
-                    limit: Number(limit),
-                    pages: Math.ceil(total / Number(limit))
+            return res.json({
+                status: 'success',
+                data: {
+                    payments,
+                    pagination: {
+                        total,
+                        page: Number(page),
+                        limit: Number(limit),
+                        pages: Math.ceil(total / Number(limit))
+                    }
                 }
-            }
-        });
+            });
+        } catch (error) {
+            next(error);
+        }
     }
 
     // Get payment details by ID
@@ -124,20 +122,24 @@ class PaymentController {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const payment = await Payment.findOne({
-            where: { id: parseInt(id), user: { id: userId } },
-            relations: ['booking']
-        });
+        try {
+            const payment = await Payment.findOne({
+                where: { id: parseInt(id), user: { id: userId } },
+                relations: ['booking']
+            });
 
-        if (!payment) {
-            throw new AppError("Payment not found", 404);
+            if (!payment) {
+                throw new AppError("Payment not found", 404);
+            }
+
+            return res.json({
+                status: 'success',
+                data: payment
+            });
+        } catch (error) {
+            next(error);
         }
-
-        res.json({
-            status: 'success',
-            data: payment
-        });
     }
 }
 
-module.exports = PaymentController; 
+module.exports = PaymentController;

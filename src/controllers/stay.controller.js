@@ -1,12 +1,15 @@
+const { AppDataSource } = require("../config/database");
 const { Stay, StayStatus } = require("../entities/Stay");
 const { Room, RoomStatus } = require("../entities/Room");
 const { AppError } = require("../middleware/error.middleware");
-const { UpdateStayStatusDto } = require("../dto/stay.dto");
 
 class StayController {
     // Create a stay when booking is confirmed
     static async createStay(booking) {
-        const stay = Stay.create({
+        const stayRepo = AppDataSource.getRepository(Stay);
+        const roomRepo = AppDataSource.getRepository(Room);
+
+        const stay = stayRepo.create({
             user: { id: booking.user.id },
             room: { id: booking.room.id },
             startDate: booking.checkInDate,
@@ -17,13 +20,13 @@ class StayController {
             status: StayStatus.ACTIVE
         });
 
-        await stay.save();
+        await stayRepo.save(stay);
 
         // Update room status to occupied
-        const room = await Room.findOne({ where: { id: booking.room.id } });
+        const room = await roomRepo.findOne({ where: { id: booking.room.id } });
         if (room) {
             room.status = RoomStatus.OCCUPIED;
-            await room.save();
+            await roomRepo.save(room);
         }
 
         return stay;
@@ -31,7 +34,9 @@ class StayController {
 
     // Admin: Get all stays
     static async getAllStays(req, res) {
-        const stays = await Stay.find({
+        const stayRepo = AppDataSource.getRepository(Stay);
+
+        const stays = await stayRepo.find({
             relations: ['user', 'room'],
             order: {
                 createdAt: 'DESC'
@@ -70,7 +75,10 @@ class StayController {
             throw new AppError("Invalid stay status", 400);
         }
 
-        const stay = await Stay.findOne({
+        const stayRepo = AppDataSource.getRepository(Stay);
+        const roomRepo = AppDataSource.getRepository(Room);
+
+        const stay = await stayRepo.findOne({
             where: { id: parseInt(id) },
             relations: ['room']
         });
@@ -81,16 +89,15 @@ class StayController {
 
         // If status is being changed to completed
         if (status === StayStatus.COMPLETED && stay.status !== StayStatus.COMPLETED) {
-            // Update room status to available
-            const room = await Room.findOne({ where: { id: stay.room.id } });
+            const room = await roomRepo.findOne({ where: { id: stay.room.id } });
             if (room) {
                 room.status = RoomStatus.AVAILABLE;
-                await room.save();
+                await roomRepo.save(room);
             }
         }
 
         stay.status = status;
-        await stay.save();
+        await stayRepo.save(stay);
 
         res.json({
             status: 'success',
@@ -110,4 +117,4 @@ class StayController {
     }
 }
 
-module.exports = StayController; 
+module.exports = StayController;

@@ -1,3 +1,4 @@
+const { AppDataSource } = require("../config/database");
 const { User } = require("../entities/User");
 const { AppError } = require("../middleware/error.middleware");
 const bcrypt = require("bcrypt");
@@ -9,8 +10,10 @@ class ProfileController {
     // Get user profile
     static async getProfile(req, res, next) {
         try {
+            const userRepo = AppDataSource.getRepository(User);
             const userId = req.user.id;
-            const user = await User.findOne({
+
+            const user = await userRepo.findOne({
                 where: { id: userId },
                 select: ['id', 'name', 'email', 'role', 'createdAt', 'updatedAt']
             });
@@ -34,17 +37,18 @@ class ProfileController {
     // Update user profile
     static async updateProfile(req, res, next) {
         try {
+            const userRepo = AppDataSource.getRepository(User);
             const userId = req.user.id;
+
             const updateProfileDto = plainToClass(UpdateProfileDto, req.body);
             const errors = await validate(updateProfileDto);
 
             if (errors.length > 0) {
-                const errorMessages = errors.map(error => {
-                    return {
-                        field: error.property,
-                        message: Object.values(error.constraints || {}).join(', ')
-                    };
-                });
+                const errorMessages = errors.map(error => ({
+                    field: error.property,
+                    message: Object.values(error.constraints || {}).join(', ')
+                }));
+
                 return res.status(400).json({
                     status: 'error',
                     message: 'Validation failed',
@@ -54,7 +58,7 @@ class ProfileController {
 
             const { name, email } = updateProfileDto;
 
-            const user = await User.findOne({ where: { id: userId } });
+            const user = await userRepo.findOne({ where: { id: userId } });
             if (!user) {
                 return res.status(404).json({
                     status: 'error',
@@ -63,7 +67,7 @@ class ProfileController {
             }
 
             if (email && email !== user.email) {
-                const existingUser = await User.findOne({ where: { email } });
+                const existingUser = await userRepo.findOne({ where: { email } });
                 if (existingUser) {
                     return res.status(400).json({
                         status: 'error',
@@ -77,7 +81,7 @@ class ProfileController {
                 user.name = name;
             }
 
-            await user.save();
+            await userRepo.save(user);
 
             res.json({
                 status: 'success',
@@ -96,17 +100,18 @@ class ProfileController {
     // Change password
     static async changePassword(req, res, next) {
         try {
+            const userRepo = AppDataSource.getRepository(User);
             const userId = req.user.id;
+
             const changePasswordDto = plainToClass(ChangePasswordDto, req.body);
             const errors = await validate(changePasswordDto);
 
             if (errors.length > 0) {
-                const errorMessages = errors.map(error => {
-                    return {
-                        field: error.property,
-                        message: Object.values(error.constraints || {}).join(', ')
-                    };
-                });
+                const errorMessages = errors.map(error => ({
+                    field: error.property,
+                    message: Object.values(error.constraints || {}).join(', ')
+                }));
+
                 return res.status(400).json({
                     status: 'error',
                     message: 'Validation failed',
@@ -116,7 +121,7 @@ class ProfileController {
 
             const { currentPassword, newPassword } = changePasswordDto;
 
-            const user = await User.findOne({ where: { id: userId } });
+            const user = await userRepo.findOne({ where: { id: userId } });
             if (!user) {
                 return res.status(404).json({
                     status: 'error',
@@ -132,9 +137,8 @@ class ProfileController {
                 });
             }
 
-            const hashedPassword = await bcrypt.hash(newPassword, 10);
-            user.password = hashedPassword;
-            await user.save();
+            user.password = await bcrypt.hash(newPassword, 10);
+            await userRepo.save(user);
 
             res.json({
                 status: 'success',
@@ -146,4 +150,4 @@ class ProfileController {
     }
 }
 
-module.exports = ProfileController; 
+module.exports = ProfileController;

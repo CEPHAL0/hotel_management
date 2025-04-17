@@ -1,20 +1,28 @@
-const { DataSource } = require("typeorm");
-const dotenv = require("dotenv");
-
-dotenv.config();
+const { DataSource } = require("typeorm"); // Import DataSource class
+const { User } = require("../entities/User");
+const { Booking } = require("../entities/Booking");
+const { Room } = require("../entities/Room");
+const { Stay } = require("../entities/Stay");
+const { Review } = require("../entities/Review");
+const { Payment } = require("../entities/Payment");
 
 const AppDataSource = new DataSource({
-    type: "mysql",
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT || "3306"),
-    username: process.env.DB_USERNAME,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_DATABASE,
-    synchronize: true,
+    type: "mysql",  // Use mysql or another database type
+    host: "localhost",
+    port: 3306,
+    username: "root",  // Your DB username
+    password: "",  // Your DB password
+    database: "hotel_management_system_js",  // Your DB name
+    entities: [
+        User,
+        Booking,
+        Room,
+        Stay,
+        Review,
+        Payment
+    ],
+    synchronize: true,  // This is useful for development (will auto create tables)
     logging: false,
-    entities: ["src/entities/*.js"],
-    migrations: ["src/migrations/*.js"],
-    subscribers: ["src/subscribers/*.js"],
 });
 
-module.exports = { AppDataSource }; 
+module.exports = { AppDataSource };

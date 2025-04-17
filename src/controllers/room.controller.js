@@ -1,22 +1,22 @@
+const { AppDataSource } = require("../config/database");
 const { Room } = require("../entities/Room");
 const { Booking } = require("../entities/Booking");
 const { Stay } = require("../entities/Stay");
 const { AppError } = require("../middleware/error.middleware");
-const { CreateRoomDto, UpdateRoomDto, UpdateRoomStatusDto } = require("../dto/room.dto");
 const { Not } = require("typeorm");
 
 class RoomController {
     static async createRoom(req, res) {
+        const roomRepo = AppDataSource.getRepository(Room);
         const roomData = req.body;
-        
-        const existingRoom = await Room.findOne({ where: { roomNumber: roomData.roomNumber } });
+
+        const existingRoom = await roomRepo.findOne({ where: { roomNumber: roomData.roomNumber } });
         if (existingRoom) {
             throw new AppError("Room number already exists", 400);
         }
 
-        const room = new Room();
-        Object.assign(room, roomData);
-        await room.save();
+        const room = roomRepo.create(roomData);
+        await roomRepo.save(room);
 
         res.status(201).json({
             status: 'success',
@@ -33,28 +33,35 @@ class RoomController {
     }
 
     static async updateRoom(req, res) {
+        const roomRepo = AppDataSource.getRepository(Room);
         const { id } = req.params;
         const updateData = req.body;
 
-        const room = await Room.findOne({ where: { id: parseInt(id) } });
+        const room = await roomRepo.findOne({ where: { id: parseInt(id) } });
         if (!room) {
             throw new AppError("Room not found", 404);
         }
 
         if (updateData.roomNumber) {
-            const existingRoom = await Room.findOne({ 
-                where: { 
+            const existingRoom = await roomRepo.findOne({
+                where: {
                     roomNumber: updateData.roomNumber,
                     id: Not(parseInt(id))
-                } 
+                }
             });
             if (existingRoom) {
                 throw new AppError("Room number already exists", 400);
             }
         }
 
-        Object.assign(room, updateData);
-        await room.save();
+        const allowedFields = ['roomNumber', 'type', 'price', 'capacity', 'status', 'description'];
+        Object.keys(updateData).forEach(key => {
+            if (allowedFields.includes(key)) {
+                room[key] = updateData[key];
+            }
+        });
+
+        await roomRepo.save(room);
 
         res.json({
             status: 'success',
@@ -71,16 +78,17 @@ class RoomController {
     }
 
     static async updateRoomStatus(req, res) {
+        const roomRepo = AppDataSource.getRepository(Room);
         const { id } = req.params;
         const { status } = req.body;
 
-        const room = await Room.findOne({ where: { id: parseInt(id) } });
+        const room = await roomRepo.findOne({ where: { id: parseInt(id) } });
         if (!room) {
             throw new AppError("Room not found", 404);
         }
 
         room.status = status;
-        await room.save();
+        await roomRepo.save(room);
 
         res.json({
             status: 'success',
@@ -95,10 +103,12 @@ class RoomController {
     }
 
     static async deleteRoom(req, res) {
+        const roomRepo = AppDataSource.getRepository(Room);
+        const bookingRepo = AppDataSource.getRepository(Booking);
+        const stayRepo = AppDataSource.getRepository(Stay);
         const { id } = req.params;
 
-        // Find the room with its relations
-        const room = await Room.findOne({
+        const room = await roomRepo.findOne({
             where: { id: parseInt(id) },
             relations: ['bookings', 'stays']
         });
@@ -107,7 +117,6 @@ class RoomController {
             throw new AppError("Room not found", 404);
         }
 
-        // Check for active bookings
         const activeBookings = room.bookings.filter(
             booking => booking.status !== "cancelled" && booking.status !== "completed"
         );
@@ -119,7 +128,6 @@ class RoomController {
             );
         }
 
-        // Check for active stays
         const activeStays = room.stays.filter(stay => stay.status === "active");
 
         if (activeStays.length > 0) {
@@ -129,14 +137,12 @@ class RoomController {
             );
         }
 
-        // Delete all bookings and stays associated with the room
         await Promise.all([
-            Booking.delete({ room: { id: parseInt(id) } }),
-            Stay.delete({ room: { id: parseInt(id) } })
+            bookingRepo.delete({ room: { id: parseInt(id) } }),
+            stayRepo.delete({ room: { id: parseInt(id) } })
         ]);
 
-        // Delete the room
-        await room.remove();
+        await roomRepo.remove(room);
 
         res.json({
             status: 'success',
@@ -145,7 +151,8 @@ class RoomController {
     }
 
     static async getRooms(req, res) {
-        const rooms = await Room.find();
+        const roomRepo = AppDataSource.getRepository(Room);
+        const rooms = await roomRepo.find();
         res.json({
             status: 'success',
             data: rooms.map(room => ({
@@ -161,9 +168,10 @@ class RoomController {
     }
 
     static async getRoom(req, res) {
+        const roomRepo = AppDataSource.getRepository(Room);
         const { id } = req.params;
-        
-        const room = await Room.findOne({ where: { id: parseInt(id) } });
+
+        const room = await roomRepo.findOne({ where: { id: parseInt(id) } });
         if (!room) {
             throw new AppError("Room not found", 404);
         }
@@ -183,4 +191,4 @@ class RoomController {
     }
 }
 
-module.exports = RoomController; 
+module.exports = RoomController;

@@ -2,15 +2,15 @@ const { IsString, IsNotEmpty, MinLength, Matches } = require("class-validator");
 
 class UpdateProfileDto {
     constructor() {
-        this.name = '';
-        this.email = '';
+        this.name = null;
+        this.email = null;
     }
 }
 
 class ChangePasswordDto {
     constructor() {
-        this.currentPassword = '';
-        this.newPassword = '';
+        this.currentPassword = null;
+        this.newPassword = null;
     }
 }
 

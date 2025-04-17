@@ -1,5 +1,6 @@
 const { AppError } = require("./error.middleware");
 const jwt = require("jsonwebtoken");
+const { AppDataSource } = require("../config/database");  // Import AppDataSource
 const { User, UserRole } = require("../entities/User");
 
 const authMiddleware = async (req, res, next) => {
@@ -11,7 +12,11 @@ const authMiddleware = async (req, res, next) => {
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findOne({ where: { id: decoded.id } });
+        
+        // Get the User repository using AppDataSource
+        const userRepository = AppDataSource.getRepository(User);
+        
+        const user = await userRepository.findOneBy({ id: decoded.id });
 
         if (!user) {
             throw new AppError("User not found", 404);
@@ -49,4 +54,4 @@ module.exports = {
     authMiddleware,
     requireAdmin,
     authorize
-}; 
+};

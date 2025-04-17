@@ -1,15 +1,16 @@
+const { AppDataSource } = require("../config/database");
 const { Review } = require("../entities/Review");
 const { Room } = require("../entities/Room");
 const { Stay, StayStatus } = require("../entities/Stay");
 const { AppError } = require("../middleware/error.middleware");
-const { CreateReviewDto, UpdateReviewDto } = require("../dto/review.dto");
 
 class ReviewController {
     // Get all reviews for a room
     static async getRoomReviews(req, res) {
         const { roomId } = req.params;
+        const reviewRepo = AppDataSource.getRepository(Review);
 
-        const reviews = await Review.find({
+        const reviews = await reviewRepo.find({
             where: { room: { id: parseInt(roomId) } },
             relations: ['user'],
             order: {
@@ -17,7 +18,6 @@ class ReviewController {
             }
         });
 
-        // Calculate average rating
         const averageRating = reviews.length > 0
             ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
             : 0;
@@ -47,8 +47,10 @@ class ReviewController {
         const reviewData = req.body;
         const userId = req.user.id;
 
-        // Check if user has completed any stays in this room
-        const completedStays = await Stay.find({
+        const stayRepo = AppDataSource.getRepository(Stay);
+        const reviewRepo = AppDataSource.getRepository(Review);
+
+        const completedStays = await stayRepo.find({
             where: {
                 user: { id: userId },
                 room: { id: parseInt(roomId) },
@@ -57,14 +59,10 @@ class ReviewController {
         });
 
         if (completedStays.length === 0) {
-            throw new AppError(
-                "You can only review rooms where you have completed a stay",
-                403
-            );
+            throw new AppError("You can only review rooms where you have completed a stay", 403);
         }
 
-        // Check if user has already reviewed this room
-        const existingReview = await Review.findOne({
+        const existingReview = await reviewRepo.findOne({
             where: {
                 user: { id: userId },
                 room: { id: parseInt(roomId) }
@@ -72,19 +70,16 @@ class ReviewController {
         });
 
         if (existingReview) {
-            throw new AppError(
-                "You have already reviewed this room",
-                400
-            );
+            throw new AppError("You have already reviewed this room", 400);
         }
 
-        const review = Review.create({
+        const review = reviewRepo.create({
             user: { id: userId },
             room: { id: parseInt(roomId) },
             ...reviewData
         });
 
-        await review.save();
+        await reviewRepo.save(review);
 
         res.status(201).json({
             status: 'success',
@@ -103,7 +98,8 @@ class ReviewController {
         const reviewData = req.body;
         const userId = req.user.id;
 
-        const review = await Review.findOne({
+        const reviewRepo = AppDataSource.getRepository(Review);
+        const review = await reviewRepo.findOne({
             where: { id: parseInt(id) },
             relations: ['user']
         });
@@ -117,7 +113,7 @@ class ReviewController {
         }
 
         Object.assign(review, reviewData);
-        await review.save();
+        await reviewRepo.save(review);
 
         res.json({
             status: 'success',
@@ -135,7 +131,8 @@ class ReviewController {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const review = await Review.findOne({
+        const reviewRepo = AppDataSource.getRepository(Review);
+        const review = await reviewRepo.findOne({
             where: { id: parseInt(id) },
             relations: ['user']
         });
@@ -148,7 +145,7 @@ class ReviewController {
             throw new AppError("You can only delete your own reviews", 403);
         }
 
-        await review.remove();
+        await reviewRepo.remove(review);
 
         res.json({
             status: 'success',
@@ -157,4 +154,4 @@ class ReviewController {
     }
 }
 
-module.exports = ReviewController; 
+module.exports = ReviewController;

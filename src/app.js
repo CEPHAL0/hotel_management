@@ -1,6 +1,6 @@
+require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
-const dotenv = require("dotenv");
 const { AppDataSource } = require("./config/database");
 const authRoutes = require("./routes/auth.routes");
 const roomRoutes = require("./routes/room.routes");
@@ -15,7 +15,6 @@ const { createAdminUser } = require("./config/admin.seeder");
 const { errorHandler } = require("./middleware/error.middleware");
 const helmet = require('helmet');
 const morgan = require('morgan');
-dotenv.config();
 
 const app = express();
 
@@ -29,12 +28,12 @@ app.use(express.urlencoded({ extended: true }));
 // Database connection
 const initializeDatabase = async () => {
     try {
-        await AppDataSource.initialize();
+        await AppDataSource.initialize(); // Ensure this is called to initialize TypeORM connection
         console.log("Database connected successfully");
-        await createAdminUser();
+        await createAdminUser();  // Seed the admin user
     } catch (error) {
         console.error("Error connecting to database:", error);
-        process.exit(1);
+        process.exit(1);  // Exit the app in case of failure
     }
 };
 
@@ -80,4 +79,4 @@ initializeDatabase().then(() => {
     process.exit(1);
 });
 
-module.exports = app; 
+module.exports = app;

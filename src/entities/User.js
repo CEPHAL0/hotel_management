@@ -1,46 +1,68 @@
-const { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, BaseEntity, OneToMany } = require("typeorm");
-const { IsEmail, IsNotEmpty, MinLength } = require("class-validator");
-const { Booking } = require("./Booking");
-const { Stay } = require("./Stay");
-const { Review } = require("./Review");
-const { Payment } = require("./Payment");
+const { EntitySchema } = require("typeorm");
 
 const UserRole = {
-    ADMIN: "admin",
-    USER: "user"
+  ADMIN: "admin",
+  USER: "user"
 };
 
-@Entity()
-class User extends BaseEntity {
-    constructor() {
-        super();
+const User = new EntitySchema({
+  name: "User",
+  tableName: "users",
+  columns: {
+    id: {
+      primary: true,
+      type: "int",
+      generated: true
+    },
+    name: {
+      type: "varchar",
+      nullable: false
+    },
+    email: {
+      type: "varchar",
+      unique: true,
+      nullable: false
+    },
+    password: {
+      type: "varchar",
+      nullable: false
+    },
+    role: {
+      type: "enum",
+      enum: UserRole,
+      default: UserRole.USER
+    },
+    createdAt: {
+      type: "timestamp",
+      createDate: true
+    },
+    updatedAt: {
+      type: "timestamp",
+      updateDate: true
     }
-}
+  },
+  relations: {
+    bookings: {
+      type: "one-to-many",
+      target: "Booking",
+      inverseSide: "user"
+    },
+    stays: {
+      type: "one-to-many",
+      target: "Stay",
+      inverseSide: "user"
+    },
+    reviews: {
+      type: "one-to-many",
+      target: "Review",
+      inverseSide: "user"
+    },
+    payments: {
+      type: "one-to-many",
+      target: "Payment",
+      inverseSide: "user"
+    }
+  }
+});
 
-PrimaryGeneratedColumn()(User.prototype, 'id');
-Column()(User.prototype, 'name');
-IsNotEmpty()(User.prototype, 'name');
-
-Column({ unique: true })(User.prototype, 'email');
-IsEmail()(User.prototype, 'email');
-IsNotEmpty()(User.prototype, 'email');
-
-Column()(User.prototype, 'password');
-MinLength(6)(User.prototype, 'password');
-IsNotEmpty()(User.prototype, 'password');
-
-Column({
-    type: "enum",
-    enum: UserRole,
-    default: UserRole.USER
-})(User.prototype, 'role');
-
-OneToMany(() => Booking, booking => booking.user)(User.prototype, 'bookings');
-OneToMany(() => Stay, stay => stay.user)(User.prototype, 'stays');
-OneToMany(() => Review, review => review.user)(User.prototype, 'reviews');
-OneToMany(() => Payment, payment => payment.user)(User.prototype, 'payments');
-
-CreateDateColumn()(User.prototype, 'createdAt');
-UpdateDateColumn()(User.prototype, 'updatedAt');
-
-module.exports = { User, UserRole }; 
+module.exports = { User, UserRole };

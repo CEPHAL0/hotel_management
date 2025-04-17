@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { StayController } = require("../controllers/stay.controller");
+const StayController = require("../controllers/stay.controller");
 const { authMiddleware, requireAdmin } = require("../middleware/auth.middleware");
 const { validateRequest } = require("../middleware/validation.middleware");
 const { UpdateStayStatusDto } = require("../dto/stay.dto");

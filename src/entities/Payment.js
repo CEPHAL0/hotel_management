@@ -1,6 +1,4 @@
-const { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, BaseEntity } = require("typeorm");
-const { Booking } = require("./Booking");
-const { User } = require("./User");
+const { EntitySchema } = require("typeorm");
 
 const PaymentStatus = {
     PENDING: 'pending',
@@ -9,28 +7,60 @@ const PaymentStatus = {
     REFUNDED: 'refunded'
 };
 
-@Entity()
-class Payment extends BaseEntity {
-    constructor() {
-        super();
+const Payment = new EntitySchema({
+    name: "Payment",
+    tableName: "payments",
+    columns: {
+        id: {
+            primary: true,
+            type: "int",
+            generated: true
+        },
+        amount: {
+            type: "decimal",
+            precision: 10,
+            scale: 2,
+            nullable: false
+        },
+        currency: {
+            type: "varchar",
+            length: 3,
+            nullable: false
+        },
+        stripePaymentId: {
+            type: "varchar",
+            nullable: false
+        },
+        status: {
+            type: "enum",
+            enum: PaymentStatus,
+            default: PaymentStatus.PENDING
+        },
+        createdAt: {
+            type: "timestamp",
+            createDate: true
+        },
+        updatedAt: {
+            type: "timestamp",
+            updateDate: true
+        }
+    },
+    relations: {
+        booking: {
+            type: "many-to-one",
+            target: "Booking",
+            joinColumn: true,
+            eager: false,
+            nullable: false
+        },
+        user: {
+            type: "many-to-one",
+            target: "User",
+            joinColumn: true,
+            eager: false,
+            nullable: false
+        }
     }
-}
+});
 
-PrimaryGeneratedColumn()(Payment.prototype, 'id');
-Column()(Payment.prototype, 'amount');
-Column()(Payment.prototype, 'currency');
-Column()(Payment.prototype, 'stripePaymentId');
-
-Column({
-    type: 'enum',
-    enum: PaymentStatus,
-    default: PaymentStatus.PENDING
-})(Payment.prototype, 'status');
-
-ManyToOne(() => Booking, booking => booking.payments)(Payment.prototype, 'booking');
-ManyToOne(() => User, user => user.payments)(Payment.prototype, 'user');
-
-CreateDateColumn()(Payment.prototype, 'createdAt');
-UpdateDateColumn()(Payment.prototype, 'updatedAt');
-
-module.exports = { Payment, PaymentStatus }; 
+module.exports = { PaymentStatus, Payment };

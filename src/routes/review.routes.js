@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { ReviewController } = require("../controllers/review.controller");
+const ReviewController  = require("../controllers/review.controller");
 const { authMiddleware } = require("../middleware/auth.middleware");
 const { validateRequest } = require("../middleware/validation.middleware");
 const { CreateReviewDto, UpdateReviewDto } = require("../dto/review.dto");

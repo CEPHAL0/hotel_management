@@ -1,3 +1,4 @@
+const { AppDataSource } = require("../config/database");  // Import AppDataSource
 const { Booking, BookingStatus } = require("../entities/Booking");
 const { Room } = require("../entities/Room");
 const { User, UserRole } = require("../entities/User");
@@ -5,7 +6,7 @@ const { AppError } = require("../middleware/error.middleware");
 const { CreateBookingDto, UpdateBookingDto } = require("../dto/booking.dto");
 const { Between, Not } = require("typeorm");
 const { StayController } = require("./stay.controller");
-const { mailService } = require("../services/mail.service");
+const mailService = require("../services/mail.service");
 
 class BookingController {
     static async createBooking(req, res, next) {
@@ -18,26 +19,23 @@ class BookingController {
             throw new AppError("Invalid room ID", 400);
         }
 
-        // Check if room exists and is available
-        const room = await Room.findOne({
-            where: { id: parseInt(roomId) }
-        });
+        // Get the Room repository using AppDataSource
+        const roomRepository = AppDataSource.getRepository(Room);
+        const room = await roomRepository.findOne({ where: { id: parseInt(roomId) } });
 
         if (!room) {
             throw new AppError("Room not found", 404);
         }
-
-        // if (room.status !== "available") {
-        //     throw new AppError("Room is not available for booking", 400);
-        // }
 
         // Check if room capacity is sufficient
         if (room.capacity < bookingData.guests) {
             throw new AppError("Room capacity exceeded", 400);
         }
 
+        // Get the Booking repository using AppDataSource
+        const bookingRepository = AppDataSource.getRepository(Booking);
         // Check for overlapping bookings
-        const overlappingBookings = await Booking.find({
+        const overlappingBookings = await bookingRepository.find({
             where: {
                 room: { id: parseInt(roomId) },
                 status: Not(BookingStatus.CANCELLED),
@@ -56,19 +54,20 @@ class BookingController {
         );
         const totalPrice = room.price * days;
 
-        const booking = new Booking();
-        booking.user = { id: userId };
-        booking.room = { id: parseInt(roomId) };
-        booking.checkInDate = bookingData.checkInDate;
-        booking.checkOutDate = bookingData.checkOutDate;
-        booking.guests = bookingData.guests;
-        booking.totalPrice = totalPrice;
-        booking.status = BookingStatus.PENDING;
+        const booking = bookingRepository.create({
+            user: { id: userId },
+            room: { id: parseInt(roomId) },
+            checkInDate: new Date(bookingData.checkInDate),
+            checkOutDate: new Date(bookingData.checkOutDate),
+            guests: bookingData.guests,
+            totalPrice: totalPrice,
+            status: BookingStatus.PENDING
+        });
 
-        await booking.save();
+        await bookingRepository.save(booking);
 
         // Load relations before sending email
-        const bookingWithRelations = await Booking.findOne({
+        const bookingWithRelations = await bookingRepository.findOne({
             where: { id: booking.id },
             relations: ['room', 'user']
         });
@@ -78,7 +77,8 @@ class BookingController {
         }
 
         // Send notification to admin
-        const admin = await User.findOne({ where: { role: UserRole.ADMIN } });
+        const adminRepository = AppDataSource.getRepository(User);
+        const admin = await adminRepository.findOne({ where: { role: UserRole.ADMIN } });
         if (admin) {
             await mailService.sendNewBookingNotification(admin, bookingWithRelations);
         }
@@ -96,7 +96,8 @@ class BookingController {
 
     static async getBookings(req, res, next) {
         const userId = req.user.id;
-        const bookings = await Booking.find({
+        const bookingRepository = AppDataSource.getRepository(Booking);
+        const bookings = await bookingRepository.find({
             where: { user: { id: userId } },
             relations: ['room']
         });
@@ -128,7 +129,8 @@ class BookingController {
             throw new AppError("Invalid booking ID", 400);
         }
 
-        const booking = await Booking.findOne({
+        const bookingRepository = AppDataSource.getRepository(Booking);
+        const booking = await bookingRepository.findOne({
             where: { id: parseInt(id), user: { id: userId } },
             relations: ['room']
         });
@@ -164,7 +166,8 @@ class BookingController {
             throw new AppError("Invalid booking ID", 400);
         }
 
-        const booking = await Booking.findOne({
+        const bookingRepository = AppDataSource.getRepository(Booking);
+        const booking = await bookingRepository.findOne({
             where: { id: parseInt(id), user: { id: userId } }
         });
 
@@ -177,7 +180,7 @@ class BookingController {
         }
 
         booking.status = BookingStatus.CANCELLED;
-        await booking.save();
+        await bookingRepository.save(booking);
 
         return res.json({
             status: 'success',
@@ -186,7 +189,8 @@ class BookingController {
     }
 
     static async getAllBookings(req, res, next) {
-        const bookings = await Booking.find({
+        const bookingRepository = AppDataSource.getRepository(Booking);
+        const bookings = await bookingRepository.find({
             relations: ['user', 'room'],
             order: {
                 createdAt: 'DESC'
@@ -229,7 +233,8 @@ class BookingController {
             throw new AppError("Invalid booking status", 400);
         }
 
-        const booking = await Booking.findOne({
+        const bookingRepository = AppDataSource.getRepository(Booking);
+        const booking = await bookingRepository.findOne({
             where: { id: parseInt(id) },
             relations: ["user", "room"]
         });
@@ -239,7 +244,7 @@ class BookingController {
         }
 
         booking.status = status;
-        await booking.save();
+        await bookingRepository.save(booking);
 
         // Send notification to user
         if (booking.user) {
@@ -253,4 +258,4 @@ class BookingController {
     }
 }
 
-module.exports = BookingController; 
+module.exports = BookingController;

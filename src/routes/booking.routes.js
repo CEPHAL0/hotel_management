@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { BookingController } = require("../controllers/booking.controller");
+const BookingController  = require("../controllers/booking.controller");
 const { authMiddleware, requireAdmin } = require("../middleware/auth.middleware");
 const { validateRequest } = require("../middleware/validation.middleware");
 const { CreateBookingDto, UpdateBookingDto } = require("../dto/booking.dto");

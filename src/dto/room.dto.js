@@ -14,10 +14,10 @@ class CreateRoomDto {
 
 class UpdateRoomDto {
     constructor() {
-        this.roomNumber = '';
+        this.roomNumber = null;
         this.type = null;
-        this.price = 0;
-        this.capacity = 0;
+        this.price = null;
+        this.capacity = null;
         this.status = null;
         this.description = '';
     }

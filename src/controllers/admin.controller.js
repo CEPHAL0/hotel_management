@@ -1,3 +1,4 @@
+const { AppDataSource } = require("../config/database");
 const { User, UserRole } = require("../entities/User");
 const { AppError } = require("../middleware/error.middleware");
 const bcrypt = require("bcrypt");
@@ -9,7 +10,9 @@ class AdminController {
     // Get all admin users
     static async getAllAdmins(req, res, next) {
         try {
-            const admins = await User.find({
+            const userRepository = AppDataSource.getRepository(User);
+
+            const admins = await userRepository.find({
                 where: { role: UserRole.ADMIN },
                 select: ['id', 'name', 'email', 'role', 'createdAt', 'updatedAt']
             });
@@ -45,7 +48,9 @@ class AdminController {
 
             const { name, email, password } = createAdminDto;
 
-            const existingUser = await User.findOne({ where: { email } });
+            const userRepository = AppDataSource.getRepository(User);
+
+            const existingUser = await userRepository.findOne({ where: { email } });
             if (existingUser) {
                 return res.status(400).json({
                     status: 'error',
@@ -54,14 +59,14 @@ class AdminController {
             }
 
             const hashedPassword = await bcrypt.hash(password, 10);
-            const admin = User.create({
+            const admin = userRepository.create({
                 name,
                 email,
                 password: hashedPassword,
                 role: UserRole.ADMIN
             });
 
-            await admin.save();
+            await userRepository.save(admin);
 
             res.status(201).json({
                 status: 'success',
@@ -100,7 +105,9 @@ class AdminController {
 
             const { name, email } = updateAdminDto;
 
-            const admin = await User.findOne({
+            const userRepository = AppDataSource.getRepository(User);
+
+            const admin = await userRepository.findOne({
                 where: { id: parseInt(id), role: UserRole.ADMIN }
             });
 
@@ -112,7 +119,7 @@ class AdminController {
             }
 
             if (email && email !== admin.email) {
-                const existingUser = await User.findOne({ where: { email } });
+                const existingUser = await userRepository.findOne({ where: { email } });
                 if (existingUser) {
                     return res.status(400).json({
                         status: 'error',
@@ -126,7 +133,7 @@ class AdminController {
                 admin.name = name;
             }
 
-            await admin.save();
+            await userRepository.save(admin);
 
             res.json({
                 status: 'success',
@@ -147,8 +154,10 @@ class AdminController {
         try {
             const { id } = req.params;
 
+            const userRepository = AppDataSource.getRepository(User);
+
             // Check if this is the last admin
-            const adminCount = await User.count({ where: { role: UserRole.ADMIN } });
+            const adminCount = await userRepository.count({ where: { role: UserRole.ADMIN } });
             if (adminCount <= 1) {
                 return res.status(400).json({
                     status: 'error',
@@ -156,7 +165,7 @@ class AdminController {
                 });
             }
 
-            const admin = await User.findOne({
+            const admin = await userRepository.findOne({
                 where: { id: parseInt(id), role: UserRole.ADMIN }
             });
 
@@ -167,7 +176,7 @@ class AdminController {
                 });
             }
 
-            await admin.remove();
+            await userRepository.remove(admin);
 
             res.json({
                 status: 'success',
@@ -179,4 +188,4 @@ class AdminController {
     }
 }
 
-module.exports = AdminController; 
+module.exports = AdminController;
