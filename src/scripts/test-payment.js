@@ -1,7 +1,7 @@
-import { Booking, BookingStatus } from "../entities/Booking";
-import { PaymentService } from "../services/payment.service";
-import { AppDataSource } from "../config/database";
-import dotenv from 'dotenv';
+const { Booking, BookingStatus } = require("../entities/Booking");
+const { PaymentService } = require("../services/payment.service");
+const { AppDataSource } = require("../config/database");
+const dotenv = require('dotenv');
 
 // Load environment variables
 dotenv.config();
