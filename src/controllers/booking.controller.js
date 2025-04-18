@@ -221,40 +221,170 @@ class BookingController {
         });
     }
 
+    static async updateBooking(req, res, next) {
+        try {
+            const { id } = req.params;
+            const userId = req.user.id;
+            const updateData = req.body;
+
+            if (!id || isNaN(parseInt(id))) {
+                throw new AppError("Invalid booking ID", 400);
+            }
+
+            const bookingRepository = AppDataSource.getRepository(Booking);
+            const booking = await bookingRepository.findOne({
+                where: { id: parseInt(id), user: { id: userId } },
+                relations: ['room']
+            });
+
+            if (!booking) {
+                throw new AppError("Booking not found", 404);
+            }
+
+            // Only allow updates for pending bookings
+            if (booking.status !== BookingStatus.PENDING) {
+                throw new AppError("Can only update pending bookings", 400);
+            }
+
+            const updates = {};
+            const allowedFields = ['checkInDate', 'checkOutDate', 'guests'];
+
+            // Validate and prepare updates
+            if (updateData.checkInDate !== undefined) {
+                updates.checkInDate = new Date(updateData.checkInDate);
+            }
+            if (updateData.checkOutDate !== undefined) {
+                updates.checkOutDate = new Date(updateData.checkOutDate);
+            }
+            if (updateData.guests !== undefined) {
+                // Check room capacity
+                if (updateData.guests > booking.room.capacity) {
+                    throw new AppError("Room capacity exceeded", 400);
+                }
+                updates.guests = updateData.guests;
+            }
+
+            // If dates are being updated, check for overlapping bookings
+            if (updates.checkInDate || updates.checkOutDate) {
+                const checkInDate = updates.checkInDate || booking.checkInDate;
+                const checkOutDate = updates.checkOutDate || booking.checkOutDate;
+
+                const overlappingBookings = await bookingRepository.find({
+                    where: {
+                        id: Not(parseInt(id)),
+                        room: { id: booking.room.id },
+                        status: Not(BookingStatus.CANCELLED),
+                        checkInDate: Between(checkInDate, checkOutDate),
+                        checkOutDate: Between(checkInDate, checkOutDate)
+                    }
+                });
+
+                if (overlappingBookings.length > 0) {
+                    throw new AppError("Room is already booked for the selected dates", 400);
+                }
+
+                // Recalculate total price if dates changed
+                const days = Math.ceil(
+                    (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+                );
+                updates.totalPrice = booking.room.price * days;
+            }
+
+            // Only perform update if there are changes
+            if (Object.keys(updates).length > 0) {
+                await bookingRepository.update(id, updates);
+            }
+
+            // Fetch updated booking
+            const updatedBooking = await bookingRepository.findOne({
+                where: { id: parseInt(id) },
+                relations: ['room']
+            });
+
+            return res.json({
+                status: 'success',
+                data: {
+                    id: updatedBooking.id,
+                    room: {
+                        id: updatedBooking.room.id,
+                        roomNumber: updatedBooking.room.roomNumber,
+                        type: updatedBooking.room.type,
+                        capacity: updatedBooking.room.capacity
+                    },
+                    checkInDate: updatedBooking.checkInDate,
+                    checkOutDate: updatedBooking.checkOutDate,
+                    guests: updatedBooking.guests,
+                    totalPrice: updatedBooking.totalPrice,
+                    status: updatedBooking.status
+                }
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     static async updateBookingStatus(req, res, next) {
-        const { id } = req.params;
-        const { status } = req.body;
+        try {
+            const { id } = req.params;
+            const { status } = req.body;
 
-        if (!id || isNaN(parseInt(id))) {
-            throw new AppError("Invalid booking ID", 400);
+            if (!id || isNaN(parseInt(id))) {
+                throw new AppError("Invalid booking ID", 400);
+            }
+
+            if (!Object.values(BookingStatus).includes(status)) {
+                throw new AppError("Invalid booking status", 400);
+            }
+
+            const bookingRepository = AppDataSource.getRepository(Booking);
+            const booking = await bookingRepository.findOne({
+                where: { id: parseInt(id) },
+                relations: ['room', 'user']
+            });
+
+            if (!booking) {
+                throw new AppError("Booking not found", 404);
+            }
+
+            // Only update if status is different
+            if (status !== booking.status) {
+                await bookingRepository.update(id, { status });
+
+                // If status is changed to CONFIRMED, create a stay
+                if (status === BookingStatus.CONFIRMED) {
+                    await StayController.createStayFromBooking(booking);
+                }
+
+                // Notify user about status change
+                await mailService.sendBookingStatusUpdate(booking.user, booking);
+            }
+
+            // Fetch updated booking
+            const updatedBooking = await bookingRepository.findOne({
+                where: { id: parseInt(id) },
+                relations: ['room']
+            });
+
+            return res.json({
+                status: 'success',
+                data: {
+                    id: updatedBooking.id,
+                    room: {
+                        id: updatedBooking.room.id,
+                        roomNumber: updatedBooking.room.roomNumber,
+                        type: updatedBooking.room.type,
+                        capacity: updatedBooking.room.capacity
+                    },
+                    checkInDate: updatedBooking.checkInDate,
+                    checkOutDate: updatedBooking.checkOutDate,
+                    guests: updatedBooking.guests,
+                    totalPrice: updatedBooking.totalPrice,
+                    status: updatedBooking.status
+                }
+            });
+        } catch (error) {
+            next(error);
         }
-
-        if (!status || !Object.values(BookingStatus).includes(status)) {
-            throw new AppError("Invalid booking status", 400);
-        }
-
-        const bookingRepository = AppDataSource.getRepository(Booking);
-        const booking = await bookingRepository.findOne({
-            where: { id: parseInt(id) },
-            relations: ["user", "room"]
-        });
-
-        if (!booking) {
-            throw new AppError("Booking not found", 404);
-        }
-
-        booking.status = status;
-        await bookingRepository.save(booking);
-
-        // Send notification to user
-        if (booking.user) {
-            await mailService.sendBookingStatusUpdate(booking.user, booking);
-        }
-
-        return res.json({
-            status: 'success',
-            message: 'Booking status updated successfully'
-        });
     }
 }
 

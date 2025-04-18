@@ -55,24 +55,27 @@ class RoomController {
         }
 
         const allowedFields = ['roomNumber', 'type', 'price', 'capacity', 'status', 'description'];
+        const updates = {};
         Object.keys(updateData).forEach(key => {
-            if (allowedFields.includes(key)) {
-                room[key] = updateData[key];
+            if (allowedFields.includes(key) && updateData[key] !== undefined) {
+                updates[key] = updateData[key];
             }
         });
 
-        await roomRepo.save(room);
+        await roomRepo.update(id, updates);
+
+        const updatedRoom = await roomRepo.findOne({ where: { id: parseInt(id) } });
 
         res.json({
             status: 'success',
             data: {
-                id: room.id,
-                roomNumber: room.roomNumber,
-                type: room.type,
-                price: room.price,
-                capacity: room.capacity,
-                status: room.status,
-                description: room.description
+                id: updatedRoom.id,
+                roomNumber: updatedRoom.roomNumber,
+                type: updatedRoom.type,
+                price: updatedRoom.price,
+                capacity: updatedRoom.capacity,
+                status: updatedRoom.status,
+                description: updatedRoom.description
             }
         });
     }

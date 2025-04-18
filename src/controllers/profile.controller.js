@@ -58,6 +58,7 @@ class ProfileController {
 
             const { name, email } = updateProfileDto;
 
+            // Check if user exists
             const user = await userRepo.findOne({ where: { id: userId } });
             if (!user) {
                 return res.status(404).json({
@@ -66,7 +67,11 @@ class ProfileController {
                 });
             }
 
-            if (email && email !== user.email) {
+            // Create updates object for partial update
+            const updates = {};
+
+            // Only add email to updates if it's provided and different
+            if (email !== undefined && email !== user.email) {
                 const existingUser = await userRepo.findOne({ where: { email } });
                 if (existingUser) {
                     return res.status(400).json({
@@ -74,23 +79,28 @@ class ProfileController {
                         message: 'Email already exists'
                     });
                 }
-                user.email = email;
+                updates.email = email;
             }
 
-            if (name) {
-                user.name = name;
+            // Only add name to updates if it's provided
+            if (name !== undefined) {
+                updates.name = name;
             }
 
-            await userRepo.save(user);
+            // Only perform update if there are changes
+            if (Object.keys(updates).length > 0) {
+                await userRepo.update(userId, updates);
+            }
+
+            // Fetch updated user
+            const updatedUser = await userRepo.findOne({
+                where: { id: userId },
+                select: ['id', 'name', 'email', 'role']
+            });
 
             res.json({
                 status: 'success',
-                data: {
-                    id: user.id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role
-                }
+                data: updatedUser
             });
         } catch (error) {
             next(error);
