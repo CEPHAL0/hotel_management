@@ -4,80 +4,123 @@ const { Booking } = require("../entities/Booking");
 const { Stay } = require("../entities/Stay");
 const { AppError } = require("../middleware/error.middleware");
 const { Not } = require("typeorm");
+const Hotel = require("../entities/Hotel");
 
 class RoomController {
-    static async createRoom(req, res) {
-        const roomRepo = AppDataSource.getRepository(Room);
-        const roomData = req.body;
+    static async createRoom(req, res, next) {
+        try {
+            const roomRepo = AppDataSource.getRepository(Room);
+            const hotelRepo = AppDataSource.getRepository(Hotel);
+            const { hotelId } = req.params;
+            const roomData = req.body;
 
-        const existingRoom = await roomRepo.findOne({ where: { roomNumber: roomData.roomNumber } });
-        if (existingRoom) {
-            throw new AppError("Room number already exists", 400);
-        }
-
-        const room = roomRepo.create(roomData);
-        await roomRepo.save(room);
-
-        res.status(201).json({
-            status: 'success',
-            data: {
-                id: room.id,
-                roomNumber: room.roomNumber,
-                type: room.type,
-                price: room.price,
-                capacity: room.capacity,
-                status: room.status,
-                description: room.description
+            // Check if hotel exists
+            const hotel = await hotelRepo.findOne({ where: { id: parseInt(hotelId) } });
+            if (!hotel) {
+                throw new AppError("Hotel not found", 404);
             }
-        });
-    }
 
-    static async updateRoom(req, res) {
-        const roomRepo = AppDataSource.getRepository(Room);
-        const { id } = req.params;
-        const updateData = req.body;
-
-        const room = await roomRepo.findOne({ where: { id: parseInt(id) } });
-        if (!room) {
-            throw new AppError("Room not found", 404);
-        }
-
-        if (updateData.roomNumber) {
+            // Check for duplicate room number within the same hotel
             const existingRoom = await roomRepo.findOne({
                 where: {
-                    roomNumber: updateData.roomNumber,
-                    id: Not(parseInt(id))
+                    roomNumber: roomData.roomNumber,
+                    hotel: { id: parseInt(hotelId) }
                 }
             });
             if (existingRoom) {
-                throw new AppError("Room number already exists", 400);
+                throw new AppError("Room number already exists in this hotel", 400);
             }
+
+            const room = roomRepo.create({
+                ...roomData,
+                hotel: { id: parseInt(hotelId) }
+            });
+            await roomRepo.save(room);
+
+            res.status(201).json({
+                status: 'success',
+                data: {
+                    id: room.id,
+                    roomNumber: room.roomNumber,
+                    type: room.type,
+                    price: room.price,
+                    capacity: room.capacity,
+                    status: room.status,
+                    description: room.description,
+                    hotel: {
+                        id: hotel.id,
+                        name: hotel.name
+                    }
+                }
+            });
+        } catch (error) {
+            next(error);
         }
+    }
 
-        const allowedFields = ['roomNumber', 'type', 'price', 'capacity', 'status', 'description'];
-        const updates = {};
-        Object.keys(updateData).forEach(key => {
-            if (allowedFields.includes(key) && updateData[key] !== undefined) {
-                updates[key] = updateData[key];
+    static async updateRoom(req, res, next) {
+        try {
+            const roomRepo = AppDataSource.getRepository(Room);
+            const { id, hotelId } = req.params;
+            const updateData = req.body;
+
+            const room = await roomRepo.findOne({
+                where: {
+                    id: parseInt(id),
+                    hotel: { id: parseInt(hotelId) }
+                }
+            });
+            if (!room) {
+                throw new AppError("Room not found in this hotel", 404);
             }
-        });
 
-        await roomRepo.update(id, updates);
-
-        const updatedRoom = await roomRepo.findOne({ where: { id: parseInt(id) } });
-
-        res.json({
-            status: 'success',
-            data: {
-                id: updatedRoom.id,
-                roomNumber: updatedRoom.roomNumber,
-                type: updatedRoom.type,
-                price: updatedRoom.price,
-                capacity: updatedRoom.capacity,
-                status: updatedRoom.status,
-                description: updatedRoom.description
+            if (updateData.roomNumber) {
+                const existingRoom = await roomRepo.findOne({
+                    where: {
+                        roomNumber: updateData.roomNumber,
+                        id: Not(parseInt(id)),
+                        hotel: { id: parseInt(hotelId) }
+                    }
+                });
+                if (existingRoom) {
+                    throw new AppError("Room number already exists in this hotel", 400);
+                }
             }
-        });
+
+            const allowedFields = ['roomNumber', 'type', 'price', 'capacity', 'status', 'description'];
+            const updates = {};
+            Object.keys(updateData).forEach(key => {
+                if (allowedFields.includes(key) && updateData[key] !== undefined) {
+                    updates[key] = updateData[key];
+                }
+            });
+
+            await roomRepo.update(id, updates);
+
+            const updatedRoom = await roomRepo.findOne({
+                where: { id: parseInt(id) },
+                relations: ['hotel']
+            });
+
+            res.json({
+                status: 'success',
+                data: {
+                    id: updatedRoom.id,
+                    roomNumber: updatedRoom.roomNumber,
+                    type: updatedRoom.type,
+                    price: updatedRoom.price,
+                    capacity: updatedRoom.capacity,
+                    status: updatedRoom.status,
+                    description: updatedRoom.description,
+                    hotel: {
+                        id: updatedRoom.hotel.id,
+                        name: updatedRoom.hotel.name
+                    }
+                }
+            });
+        } catch (error) {
+            next(error)
+        }
     }
 
     static async updateRoomStatus(req, res) {
@@ -155,7 +198,16 @@ class RoomController {
 
     static async getRooms(req, res) {
         const roomRepo = AppDataSource.getRepository(Room);
-        const rooms = await roomRepo.find();
+        const { hotelId } = req.params;
+
+        const rooms = await roomRepo.find({
+            where: { hotel: { id: parseInt(hotelId) } },
+            relations: ['hotel'],
+            order: {
+                roomNumber: 'ASC'
+            }
+        });
+
         res.json({
             status: 'success',
             data: rooms.map(room => ({
@@ -165,18 +217,29 @@ class RoomController {
                 price: room.price,
                 capacity: room.capacity,
                 status: room.status,
-                description: room.description
+                description: room.description,
+                hotel: {
+                    id: room.hotel.id,
+                    name: room.hotel.name
+                }
             }))
         });
     }
 
     static async getRoom(req, res) {
         const roomRepo = AppDataSource.getRepository(Room);
-        const { id } = req.params;
+        const { id, hotelId } = req.params;
 
-        const room = await roomRepo.findOne({ where: { id: parseInt(id) } });
+        const room = await roomRepo.findOne({
+            where: {
+                id: parseInt(id),
+                hotel: { id: parseInt(hotelId) }
+            },
+            relations: ['hotel']
+        });
+
         if (!room) {
-            throw new AppError("Room not found", 404);
+            throw new AppError("Room not found in this hotel", 404);
         }
 
         res.json({
@@ -188,7 +251,11 @@ class RoomController {
                 price: room.price,
                 capacity: room.capacity,
                 status: room.status,
-                description: room.description
+                description: room.description,
+                hotel: {
+                    id: room.hotel.id,
+                    name: room.hotel.name
+                }
             }
         });
     }

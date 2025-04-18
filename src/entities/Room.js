@@ -60,6 +60,12 @@ const Room = new EntitySchema({
     }
   },
   relations: {
+    hotel: {
+      type: "many-to-one",
+      target: "Hotel",
+      inverseSide: "rooms",
+      nullable: false
+    },
     bookings: {
       type: "one-to-many",
       target: "Booking",
