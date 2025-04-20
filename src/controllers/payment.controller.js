@@ -3,7 +3,8 @@ const { Booking } = require("../entities/Booking");
 const { AppError } = require("../middleware/error.middleware");
 const Stripe = require('stripe');
 const dotenv = require('dotenv');
-const { Payment } = require("../entities/Payment");
+const { Payment, PaymentStatus } = require("../entities/Payment");
+const { AppDataSource } = require("../config/database");
 
 dotenv.config();
 
@@ -85,16 +86,17 @@ class PaymentController {
     }
 
     // Get all payments for the authenticated user
-    static async getPayments(req, res) {
-        const userId = req.user.id;
-        const { page = 1, limit = 10 } = req.query;
-
-        const skip = (Number(page) - 1) * Number(limit);
-
+    static async getPayments(req, res, next) {
         try {
-            const [payments, total] = await Payment.findAndCount({
+            const userId = req.user.id;
+            const { page = 1, limit = 10 } = req.query;
+
+            const skip = (Number(page) - 1) * Number(limit);
+
+            const paymentRepository = AppDataSource.getRepository(Payment);
+            const [payments, total] = await paymentRepository.findAndCount({
                 where: { user: { id: userId } },
-                relations: ['booking'],
+                relations: ['booking', 'user'],
                 order: { createdAt: 'DESC' },
                 skip,
                 take: Number(limit)
@@ -118,14 +120,15 @@ class PaymentController {
     }
 
     // Get payment details by ID
-    static async getPaymentById(req, res) {
-        const { id } = req.params;
-        const userId = req.user.id;
-
+    static async getPaymentById(req, res, next) {
         try {
-            const payment = await Payment.findOne({
+            const { id } = req.params;
+            const userId = req.user.id;
+
+            const paymentRepository = AppDataSource.getRepository(Payment);
+            const payment = await paymentRepository.findOne({
                 where: { id: parseInt(id), user: { id: userId } },
-                relations: ['booking']
+                relations: ['booking', 'user']
             });
 
             if (!payment) {

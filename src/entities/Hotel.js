@@ -27,6 +27,11 @@ const Hotel = new EntitySchema({
             type: "text",
             nullable: true
         },
+        imageUrl: {
+            type: "varchar",
+            length: 255,
+            nullable: true
+        },
         createdAt: {
             type: "timestamp",
             createDate: true

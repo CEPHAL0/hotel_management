@@ -5,7 +5,7 @@ const { User, UserRole } = require("../entities/User");
 const { AppError } = require("../middleware/error.middleware");
 const { CreateBookingDto, UpdateBookingDto } = require("../dto/booking.dto");
 const { Between, Not } = require("typeorm");
-const { StayController } = require("./stay.controller");
+const StayController = require("./stay.controller");
 const mailService = require("../services/mail.service");
 
 class BookingController {
@@ -17,6 +17,14 @@ class BookingController {
         // Validate roomId
         if (!roomId || isNaN(parseInt(roomId))) {
             throw new AppError("Invalid room ID", 400);
+        }
+
+        // Ensure dates are Date objects
+        const checkInDate = new Date(bookingData.checkInDate);
+        const checkOutDate = new Date(bookingData.checkOutDate);
+
+        if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
+            throw new AppError("Invalid dates provided", 400);
         }
 
         // Get the Room repository using AppDataSource
@@ -39,8 +47,8 @@ class BookingController {
             where: {
                 room: { id: parseInt(roomId) },
                 status: Not(BookingStatus.CANCELLED),
-                checkInDate: Between(bookingData.checkInDate, bookingData.checkOutDate),
-                checkOutDate: Between(bookingData.checkInDate, bookingData.checkOutDate)
+                checkInDate: Between(checkInDate, checkOutDate),
+                checkOutDate: Between(checkInDate, checkOutDate)
             }
         });
 
@@ -50,15 +58,15 @@ class BookingController {
 
         // Calculate total price
         const days = Math.ceil(
-            (bookingData.checkOutDate.getTime() - bookingData.checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+            (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)
         );
         const totalPrice = room.price * days;
 
         const booking = bookingRepository.create({
             user: { id: userId },
             room: { id: parseInt(roomId) },
-            checkInDate: new Date(bookingData.checkInDate),
-            checkOutDate: new Date(bookingData.checkOutDate),
+            checkInDate: checkInDate,
+            checkOutDate: checkOutDate,
             guests: bookingData.guests,
             totalPrice: totalPrice,
             status: BookingStatus.PENDING
@@ -251,10 +259,18 @@ class BookingController {
 
             // Validate and prepare updates
             if (updateData.checkInDate !== undefined) {
-                updates.checkInDate = new Date(updateData.checkInDate);
+                const newCheckInDate = new Date(updateData.checkInDate);
+                if (isNaN(newCheckInDate.getTime())) {
+                    throw new AppError("Invalid check-in date", 400);
+                }
+                updates.checkInDate = newCheckInDate;
             }
             if (updateData.checkOutDate !== undefined) {
-                updates.checkOutDate = new Date(updateData.checkOutDate);
+                const newCheckOutDate = new Date(updateData.checkOutDate);
+                if (isNaN(newCheckOutDate.getTime())) {
+                    throw new AppError("Invalid check-out date", 400);
+                }
+                updates.checkOutDate = newCheckOutDate;
             }
             if (updateData.guests !== undefined) {
                 // Check room capacity
@@ -352,7 +368,7 @@ class BookingController {
 
                 // If status is changed to CONFIRMED, create a stay
                 if (status === BookingStatus.CONFIRMED) {
-                    await StayController.createStayFromBooking(booking);
+                    await StayController.createStay(booking);
                 }
 
                 // Notify user about status change

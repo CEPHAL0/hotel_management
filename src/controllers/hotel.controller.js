@@ -4,12 +4,34 @@ const { AppError } = require("../middleware/error.middleware");
 const { validate } = require("class-validator");
 const { plainToClass } = require("class-transformer");
 const { CreateHotelDto, UpdateHotelDto } = require("../dto/hotel.dto");
+const { uploadImage, deleteOldImage, handleMulterError } = require("../utils/fileUpload");
+const path = require('path');
 
 class HotelController {
+    // Middleware for handling image upload
+    static uploadHotelImage = uploadImage('image');
+
     static async createHotel(req, res, next) {
         try {
             const hotelRepo = AppDataSource.getRepository(Hotel);
-            const createHotelDto = plainToClass(CreateHotelDto, req.body);
+            
+            // Check if image was uploaded
+            if (!req.file) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Image is required for creating a hotel'
+                });
+            }
+
+            // Extract form data from request
+            const hotelData = {
+                name: req.body.name,
+                city: req.body.city,
+                address: req.body.address,
+                description: req.body.description
+            };
+
+            const createHotelDto = plainToClass(CreateHotelDto, hotelData);
             const errors = await validate(createHotelDto);
 
             if (errors.length > 0) {
@@ -25,7 +47,14 @@ class HotelController {
                 });
             }
 
-            const hotel = hotelRepo.create(createHotelDto);
+            // Handle image upload
+            const imageUrl = `/uploads/${req.file.filename}`;
+
+            const hotel = hotelRepo.create({
+                ...createHotelDto,
+                imageUrl
+            });
+
             await hotelRepo.save(hotel);
 
             res.status(201).json({
@@ -36,7 +65,8 @@ class HotelController {
                     city: hotel.city,
                     address: hotel.address,
                     description: hotel.description,
-                    rating: 0 // New hotel starts with 0 rating
+                    imageUrl: hotel.imageUrl,
+                    rating: 0
                 }
             });
         } catch (error) {
@@ -48,14 +78,12 @@ class HotelController {
         try {
             const hotelRepo = AppDataSource.getRepository(Hotel);
             
-            // Get hotels with their rooms and room reviews
             const hotels = await hotelRepo.createQueryBuilder("hotel")
                 .leftJoinAndSelect("hotel.rooms", "room")
                 .leftJoinAndSelect("room.reviews", "review")
                 .orderBy("hotel.name", "ASC")
                 .getMany();
 
-            // Calculate average rating for each hotel
             const hotelsWithRating = hotels.map(hotel => {
                 let totalRating = 0;
                 let totalReviews = 0;
@@ -76,6 +104,7 @@ class HotelController {
                     city: hotel.city,
                     address: hotel.address,
                     description: hotel.description,
+                    imageUrl: hotel.imageUrl,
                     rating: averageRating,
                     totalRooms: hotel.rooms.length,
                     totalReviews: totalReviews
@@ -106,7 +135,6 @@ class HotelController {
                 throw new AppError("Hotel not found", 404);
             }
 
-            // Calculate average rating for the hotel
             let totalRating = 0;
             let totalReviews = 0;
 
@@ -128,6 +156,7 @@ class HotelController {
                     city: hotel.city,
                     address: hotel.address,
                     description: hotel.description,
+                    imageUrl: hotel.imageUrl,
                     rating: averageRating,
                     totalRooms: hotel.rooms.length,
                     totalReviews: totalReviews,
@@ -139,6 +168,7 @@ class HotelController {
                         capacity: room.capacity,
                         status: room.status,
                         description: room.description,
+                        imageUrl: room.imageUrl,
                         rating: room.reviews && room.reviews.length > 0 
                             ? room.reviews.reduce((sum, review) => sum + review.rating, 0) / room.reviews.length 
                             : 0,
@@ -155,45 +185,42 @@ class HotelController {
         try {
             const hotelRepo = AppDataSource.getRepository(Hotel);
             const { id } = req.params;
-            const updateHotelDto = plainToClass(UpdateHotelDto, req.body);
-            const errors = await validate(updateHotelDto);
 
-            if (errors.length > 0) {
-                const errorMessages = errors.map(error => ({
-                    field: error.property,
-                    message: Object.values(error.constraints || {}).join(', ')
-                }));
-
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'Validation failed',
-                    errors: errorMessages
-                });
-            }
-
+            // Get existing hotel
             const hotel = await hotelRepo.findOne({ where: { id: parseInt(id) } });
             if (!hotel) {
                 throw new AppError("Hotel not found", 404);
             }
 
-            // Update only provided fields
+            // Create update object with only provided fields
             const updates = {};
-            Object.keys(updateHotelDto).forEach(key => {
-                if (updateHotelDto[key] !== undefined) {
-                    updates[key] = updateHotelDto[key];
+            
+            // Only update fields that are provided in the request
+            if (req.body.name !== undefined) updates.name = req.body.name;
+            if (req.body.city !== undefined) updates.city = req.body.city;
+            if (req.body.address !== undefined) updates.address = req.body.address;
+            if (req.body.description !== undefined) updates.description = req.body.description;
+
+            // Handle image upload if provided
+            if (req.file) {
+                // Delete old image if exists
+                if (hotel.imageUrl) {
+                    deleteOldImage(hotel.imageUrl);
                 }
-            });
+                updates.imageUrl = `/uploads/${req.file.filename}`;
+            }
 
-            await hotelRepo.update(id, updates);
+            // Only proceed with update if there are actual changes
+            if (Object.keys(updates).length > 0) {
+                await hotelRepo.update(id, updates);
+            }
 
-            // Get updated hotel with rooms and reviews to calculate new rating
             const updatedHotel = await hotelRepo.createQueryBuilder("hotel")
                 .leftJoinAndSelect("hotel.rooms", "room")
                 .leftJoinAndSelect("room.reviews", "review")
                 .where("hotel.id = :id", { id: parseInt(id) })
                 .getOne();
 
-            // Calculate average rating
             let totalRating = 0;
             let totalReviews = 0;
 
@@ -215,6 +242,7 @@ class HotelController {
                     city: updatedHotel.city,
                     address: updatedHotel.address,
                     description: updatedHotel.description,
+                    imageUrl: updatedHotel.imageUrl,
                     rating: averageRating,
                     totalRooms: updatedHotel.rooms.length,
                     totalReviews: totalReviews
@@ -242,6 +270,11 @@ class HotelController {
             // Check if hotel has any rooms
             if (hotel.rooms.length > 0) {
                 throw new AppError("Cannot delete hotel with existing rooms. Please delete the rooms first.", 400);
+            }
+
+            // Delete hotel image if exists
+            if (hotel.imageUrl) {
+                deleteOldImage(hotel.imageUrl);
             }
 
             await hotelRepo.remove(hotel);

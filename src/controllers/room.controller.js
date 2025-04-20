@@ -8,18 +8,45 @@ const Hotel = require("../entities/Hotel");
 const { validate } = require("class-validator");
 const { plainToClass } = require("class-transformer");
 const { CreateRoomDto, UpdateRoomDto, UpdateRoomStatusDto } = require("../dto/room.dto");
+const { uploadImage, deleteOldImage, handleMulterError } = require("../utils/fileUpload");
+const path = require('path');
 
 class RoomController {
+    // Middleware for handling image upload
+    static uploadRoomImage = uploadImage('image');
+
     static async createRoom(req, res, next) {
         try {
             const roomRepo = AppDataSource.getRepository(Room);
             const hotelRepo = AppDataSource.getRepository(Hotel);
             const { hotelId } = req.params;
 
-            // Validate request body
-            const createRoomDto = plainToClass(CreateRoomDto, req.body);
-            const errors = await validate(createRoomDto);
+            // Check if image was uploaded
+            if (!req.file) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Image is required for creating a room'
+                });
+            }
 
+            // Check if hotel exists
+            const hotel = await hotelRepo.findOne({ where: { id: parseInt(hotelId) } });
+            if (!hotel) {
+                throw new AppError("Hotel not found", 404);
+            }
+
+            // Create DTO from request body
+            const createRoomDto = plainToClass(CreateRoomDto, {
+                roomNumber: req.body.roomNumber?.trim(),
+                type: req.body.type?.trim(),
+                price: req.body.price ? parseFloat(req.body.price) : undefined,
+                capacity: req.body.capacity ? parseInt(req.body.capacity) : undefined,
+                description: req.body.description?.trim(),
+                status: RoomStatus.AVAILABLE
+            });
+
+            // Validate DTO
+            const errors = await validate(createRoomDto);
             if (errors.length > 0) {
                 const errorMessages = errors.map(error => ({
                     field: error.property,
@@ -33,13 +60,7 @@ class RoomController {
                 });
             }
 
-            // Check if hotel exists
-            const hotel = await hotelRepo.findOne({ where: { id: parseInt(hotelId) } });
-            if (!hotel) {
-                throw new AppError("Hotel not found", 404);
-            }
-
-            // Check for duplicate room number
+            // Validate room number uniqueness
             const existingRoom = await roomRepo.findOne({
                 where: {
                     roomNumber: createRoomDto.roomNumber,
@@ -48,11 +69,18 @@ class RoomController {
             });
 
             if (existingRoom) {
-                throw new AppError("Room number already exists in this hotel", 400);
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Room number already exists in this hotel'
+                });
             }
+
+            // Handle image upload
+            const imageUrl = `/uploads/${req.file.filename}`;
 
             const room = roomRepo.create({
                 ...createRoomDto,
+                imageUrl,
                 hotel: { id: parseInt(hotelId) }
             });
 
@@ -68,6 +96,7 @@ class RoomController {
                     capacity: room.capacity,
                     status: room.status,
                     description: room.description,
+                    imageUrl: room.imageUrl,
                     hotel: {
                         id: hotel.id,
                         name: hotel.name
@@ -82,12 +111,30 @@ class RoomController {
     static async updateRoom(req, res, next) {
         try {
             const roomRepo = AppDataSource.getRepository(Room);
-            const { id, hotelId } = req.params;
+            const { id } = req.params;
 
-            // Validate request body
-            const updateRoomDto = plainToClass(UpdateRoomDto, req.body);
+            // Get existing room
+            const room = await roomRepo.findOne({
+                where: { id: parseInt(id) },
+                relations: ['hotel']
+            });
+
+            if (!room) {
+                throw new AppError("Room not found", 404);
+            }
+
+            // Create DTO from request body
+            const updateRoomDto = plainToClass(UpdateRoomDto, {
+                roomNumber: req.body.roomNumber?.trim(),
+                type: req.body.type?.trim(),
+                price: req.body.price ? parseFloat(req.body.price) : undefined,
+                capacity: req.body.capacity ? parseInt(req.body.capacity) : undefined,
+                status: req.body.status?.trim(),
+                description: req.body.description?.trim()
+            });
+
+            // Validate DTO
             const errors = await validate(updateRoomDto);
-
             if (errors.length > 0) {
                 const errorMessages = errors.map(error => ({
                     field: error.property,
@@ -101,41 +148,63 @@ class RoomController {
                 });
             }
 
-            // Check if room exists
-            const room = await roomRepo.findOne({
-                where: {
-                    id: parseInt(id),
-                    hotel: { id: parseInt(hotelId) }
-                }
-            });
-
-            if (!room) {
-                throw new AppError("Room not found", 404);
-            }
-
-            // Check for duplicate room number if being updated
-            if (updateRoomDto.roomNumber && updateRoomDto.roomNumber !== room.roomNumber) {
-                const existingRoom = await roomRepo.findOne({
-                    where: {
-                        roomNumber: updateRoomDto.roomNumber,
-                        hotel: { id: parseInt(hotelId) }
-                    }
-                });
-
-                if (existingRoom) {
-                    throw new AppError("Room number already exists in this hotel", 400);
-                }
-            }
-
-            // Update only provided fields
+            // Create update object with only provided fields
             const updates = {};
-            Object.keys(updateRoomDto).forEach(key => {
-                if (updateRoomDto[key] !== undefined) {
-                    updates[key] = updateRoomDto[key];
-                }
-            });
 
-            await roomRepo.update(id, updates);
+            // Only update fields that are provided in the request
+            if (updateRoomDto.roomNumber !== undefined) {
+                // Check for duplicate room number if being updated
+                if (updateRoomDto.roomNumber !== room.roomNumber) {
+                    const existingRoom = await roomRepo.findOne({
+                        where: {
+                            roomNumber: updateRoomDto.roomNumber,
+                            hotel: { id: room.hotel.id }
+                        }
+                    });
+
+                    if (existingRoom) {
+                        return res.status(400).json({
+                            status: 'error',
+                            message: 'Room number already exists in this hotel'
+                        });
+                    }
+                }
+                updates.roomNumber = updateRoomDto.roomNumber;
+            }
+
+            if (updateRoomDto.type !== undefined) {
+                updates.type = updateRoomDto.type;
+            }
+
+            if (updateRoomDto.price !== undefined) {
+                updates.price = updateRoomDto.price;
+            }
+
+            if (updateRoomDto.capacity !== undefined) {
+                updates.capacity = updateRoomDto.capacity;
+            }
+
+            if (updateRoomDto.status !== undefined) {
+                updates.status = updateRoomDto.status;
+            }
+
+            if (updateRoomDto.description !== undefined) {
+                updates.description = updateRoomDto.description;
+            }
+
+            // Handle image upload if provided
+            if (req.file) {
+                // Delete old image if exists
+                if (room.imageUrl) {
+                    deleteOldImage(room.imageUrl);
+                }
+                updates.imageUrl = `/uploads/${req.file.filename}`;
+            }
+
+            // Only proceed with update if there are actual changes
+            if (Object.keys(updates).length > 0) {
+                await roomRepo.update(id, updates);
+            }
 
             const updatedRoom = await roomRepo.findOne({
                 where: { id: parseInt(id) },
@@ -152,6 +221,7 @@ class RoomController {
                     capacity: updatedRoom.capacity,
                     status: updatedRoom.status,
                     description: updatedRoom.description,
+                    imageUrl: updatedRoom.imageUrl,
                     hotel: {
                         id: updatedRoom.hotel.id,
                         name: updatedRoom.hotel.name
@@ -276,6 +346,7 @@ class RoomController {
                 capacity: room.capacity,
                 status: room.status,
                 description: room.description,
+                imageUrl: room.imageUrl,
                 hotel: {
                     id: room.hotel.id,
                     name: room.hotel.name
@@ -284,38 +355,49 @@ class RoomController {
         });
     }
 
-    static async getRoom(req, res) {
-        const roomRepo = AppDataSource.getRepository(Room);
-        const { id, hotelId } = req.params;
+    static async getRoom(req, res, next) {
+        try {
+            const roomRepo = AppDataSource.getRepository(Room);
+            const { id } = req.params;
 
-        const room = await roomRepo.findOne({
-            where: {
-                id: parseInt(id),
-                hotel: { id: parseInt(hotelId) }
-            },
-            relations: ['hotel']
-        });
-
-        if (!room) {
-            throw new AppError("Room not found in this hotel", 404);
-        }
-
-        res.json({
-            status: 'success',
-            data: {
-                id: room.id,
-                roomNumber: room.roomNumber,
-                type: room.type,
-                price: room.price,
-                capacity: room.capacity,
-                status: room.status,
-                description: room.description,
-                hotel: {
-                    id: room.hotel.id,
-                    name: room.hotel.name
-                }
+            // Validate room ID
+            const roomId = parseInt(id);
+            if (isNaN(roomId)) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid room ID'
+                });
             }
-        });
+
+            const room = await roomRepo.findOne({
+                where: { id: roomId },
+                relations: ['hotel']
+            });
+
+            if (!room) {
+                throw new AppError("Room not found", 404);
+            }
+
+            res.json({
+                status: 'success',
+                data: {
+                    id: room.id,
+                    roomNumber: room.roomNumber,
+                    type: room.type,
+                    price: room.price,
+                    capacity: room.capacity,
+                    status: room.status,
+                    description: room.description,
+                    imageUrl: room.imageUrl,
+                    hotel: {
+                        id: room.hotel.id,
+                        name: room.hotel.name
+                    }
+                }
+            });
+        } catch (error) {
+            next(error);
+        }
     }
 
     static async searchRooms(req, res, next) {
@@ -323,7 +405,8 @@ class RoomController {
             const roomRepo = AppDataSource.getRepository(Room);
             const queryBuilder = roomRepo.createQueryBuilder("room")
                 .leftJoinAndSelect("room.hotel", "hotel")
-                .leftJoinAndSelect("room.reviews", "reviews");
+                .leftJoinAndSelect("room.reviews", "reviews")
+                .leftJoinAndSelect("room.bookings", "bookings");
 
             // Apply filters based on query parameters
             const {
@@ -346,10 +429,16 @@ class RoomController {
 
             // Price range filter
             if (minPrice) {
-                queryBuilder.andWhere("room.price >= :minPrice", { minPrice: parseFloat(minPrice) });
+                const minPriceNum = parseFloat(minPrice);
+                if (!isNaN(minPriceNum)) {
+                    queryBuilder.andWhere("room.price >= :minPrice", { minPrice: minPriceNum });
+                }
             }
             if (maxPrice) {
-                queryBuilder.andWhere("room.price <= :maxPrice", { maxPrice: parseFloat(maxPrice) });
+                const maxPriceNum = parseFloat(maxPrice);
+                if (!isNaN(maxPriceNum)) {
+                    queryBuilder.andWhere("room.price <= :maxPrice", { maxPrice: maxPriceNum });
+                }
             }
 
             // Room type filter
@@ -359,31 +448,52 @@ class RoomController {
 
             // Capacity filter
             if (capacity) {
-                queryBuilder.andWhere("room.capacity >= :capacity", { capacity: parseInt(capacity) });
+                const capacityNum = parseInt(capacity);
+                if (!isNaN(capacityNum)) {
+                    queryBuilder.andWhere("room.capacity >= :capacity", { capacity: capacityNum });
+                }
             }
 
-            // Availability filter (if dates are provided)
+            // Date availability filter
             if (checkInDate && checkOutDate) {
-                queryBuilder
-                    .leftJoin("room.bookings", "bookings")
-                    .andWhere("(bookings.id IS NULL OR NOT (bookings.checkInDate <= :checkOutDate AND bookings.checkOutDate >= :checkInDate))", {
-                        checkInDate: new Date(checkInDate),
-                        checkOutDate: new Date(checkOutDate)
-                    });
+                const startDate = new Date(checkInDate);
+                const endDate = new Date(checkOutDate);
+
+                if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+                    // Find rooms that are either:
+                    // 1. Not booked at all
+                    // 2. Have bookings that don't overlap with the requested dates
+                    queryBuilder.andWhere(`
+                        (bookings.id IS NULL OR 
+                        NOT EXISTS (
+                            SELECT 1 FROM bookings b 
+                            WHERE b.roomId = room.id 
+                            AND b.status != 'cancelled'
+                            AND (
+                                (b.checkInDate <= :endDate AND b.checkOutDate >= :startDate)
+                            )
+                        ))
+                    `, { startDate, endDate });
+                }
             }
 
             // Rating filter
             if (minRating) {
-                queryBuilder
-                    .addSelect("COALESCE(AVG(reviews.rating), 0)", "averageRating")
-                    .groupBy("room.id, hotel.id")
-                    .having("COALESCE(AVG(reviews.rating), 0) >= :minRating", { minRating: parseFloat(minRating) });
+                const minRatingNum = parseFloat(minRating);
+                if (!isNaN(minRatingNum)) {
+                    queryBuilder
+                        .addSelect("COALESCE(AVG(reviews.rating), 0)", "averageRating")
+                        .groupBy("room.id, hotel.id")
+                        .having("COALESCE(AVG(reviews.rating), 0) >= :minRating", { minRating: minRatingNum });
+                }
             } else {
                 queryBuilder
                     .addSelect("COALESCE(AVG(reviews.rating), 0)", "averageRating")
                     .groupBy("room.id, hotel.id");
             }
 
+            // Only show available rooms
+            queryBuilder.andWhere("room.status = :status", { status: RoomStatus.AVAILABLE });
 
             // Sorting
             if (sortBy) {
@@ -407,11 +517,13 @@ class RoomController {
                 capacity: room.capacity,
                 status: room.status,
                 description: room.description,
+                imageUrl: room.imageUrl,
                 hotel: {
                     id: room.hotel.id,
                     name: room.hotel.name,
                     city: room.hotel.city,
-                    address: room.hotel.address
+                    address: room.hotel.address,
+                    imageUrl: room.hotel.imageUrl
                 },
                 averageRating: room.averageRating || 0,
                 reviewCount: room.reviews?.length || 0

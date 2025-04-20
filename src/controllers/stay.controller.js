@@ -9,13 +9,21 @@ class StayController {
         const stayRepo = AppDataSource.getRepository(Stay);
         const roomRepo = AppDataSource.getRepository(Room);
 
+        // Ensure dates are Date objects
+        const startDate = new Date(booking.checkInDate);
+        const endDate = new Date(booking.checkOutDate);
+
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            throw new AppError("Invalid dates in booking", 400);
+        }
+
         const stay = stayRepo.create({
             user: { id: booking.user.id },
             room: { id: booking.room.id },
-            startDate: booking.checkInDate,
-            endDate: booking.checkOutDate,
+            startDate: startDate,
+            endDate: endDate,
             totalDays: Math.ceil(
-                (booking.checkOutDate.getTime() - booking.checkInDate.getTime()) / (1000 * 60 * 60 * 24)
+                (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
             ),
             status: StayStatus.ACTIVE
         });
