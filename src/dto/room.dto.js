@@ -1,4 +1,4 @@
-const { IsNotEmpty, IsString, IsNumber, Min, IsEnum, IsOptional } = require("class-validator");
+const { IsString, IsNumber, IsEnum, IsOptional, IsDate, Min, Max, IsInt } = require("class-validator");
 const { RoomType, RoomStatus } = require("../entities/Room");
 
 class CreateRoomDto {
@@ -7,7 +7,7 @@ class CreateRoomDto {
         this.type = null;
         this.price = 0;
         this.capacity = 0;
-        this.status = null;
+        this.status = RoomStatus.AVAILABLE;
         this.description = '';
     }
 }
@@ -19,7 +19,7 @@ class UpdateRoomDto {
         this.price = null;
         this.capacity = null;
         this.status = null;
-        this.description = '';
+        this.description = null;
     }
 }
 
@@ -35,19 +35,16 @@ const updateRoomDto = new UpdateRoomDto();
 const updateRoomStatusDto = new UpdateRoomStatusDto();
 
 // CreateRoomDto validations
-IsNotEmpty()(CreateRoomDto.prototype, 'roomNumber');
 IsString()(CreateRoomDto.prototype, 'roomNumber');
 
 IsEnum(RoomType)(CreateRoomDto.prototype, 'type');
-IsNotEmpty()(CreateRoomDto.prototype, 'type');
 
 IsNumber()(CreateRoomDto.prototype, 'price');
 Min(0)(CreateRoomDto.prototype, 'price');
-IsNotEmpty()(CreateRoomDto.prototype, 'price');
 
-IsNumber()(CreateRoomDto.prototype, 'capacity');
+IsInt()(CreateRoomDto.prototype, 'capacity');
 Min(1)(CreateRoomDto.prototype, 'capacity');
-IsNotEmpty()(CreateRoomDto.prototype, 'capacity');
+Max(10)(CreateRoomDto.prototype, 'capacity');
 
 IsEnum(RoomStatus)(CreateRoomDto.prototype, 'status');
 IsOptional()(CreateRoomDto.prototype, 'status');
@@ -66,8 +63,9 @@ IsNumber()(UpdateRoomDto.prototype, 'price');
 Min(0)(UpdateRoomDto.prototype, 'price');
 IsOptional()(UpdateRoomDto.prototype, 'price');
 
-IsNumber()(UpdateRoomDto.prototype, 'capacity');
+IsInt()(UpdateRoomDto.prototype, 'capacity');
 Min(1)(UpdateRoomDto.prototype, 'capacity');
+Max(10)(UpdateRoomDto.prototype, 'capacity');
 IsOptional()(UpdateRoomDto.prototype, 'capacity');
 
 IsEnum(RoomStatus)(UpdateRoomDto.prototype, 'status');
@@ -78,7 +76,6 @@ IsOptional()(UpdateRoomDto.prototype, 'description');
 
 // UpdateRoomStatusDto validations
 IsEnum(RoomStatus)(UpdateRoomStatusDto.prototype, 'status');
-IsNotEmpty()(UpdateRoomStatusDto.prototype, 'status');
 
 module.exports = {
     CreateRoomDto,

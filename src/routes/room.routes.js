@@ -24,4 +24,7 @@ router.put("/hotel/:hotelId/:id/status", RoomController.updateRoomStatus);
 // Delete room from a hotel
 router.delete("/hotel/:hotelId/:id", RoomController.deleteRoom);
 
+router.get("/search", RoomController.searchRooms);
+
+
 module.exports = router; 
