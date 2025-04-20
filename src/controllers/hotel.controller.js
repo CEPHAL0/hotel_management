@@ -35,7 +35,8 @@ class HotelController {
                     name: hotel.name,
                     city: hotel.city,
                     address: hotel.address,
-                    description: hotel.description
+                    description: hotel.description,
+                    rating: 0 // New hotel starts with 0 rating
                 }
             });
         } catch (error) {
@@ -46,23 +47,44 @@ class HotelController {
     static async getHotels(req, res, next) {
         try {
             const hotelRepo = AppDataSource.getRepository(Hotel);
-            const hotels = await hotelRepo.find({
-                relations: ['rooms'],
-                order: {
-                    name: 'ASC'
-                }
-            });
+            
+            // Get hotels with their rooms and room reviews
+            const hotels = await hotelRepo.createQueryBuilder("hotel")
+                .leftJoinAndSelect("hotel.rooms", "room")
+                .leftJoinAndSelect("room.reviews", "review")
+                .orderBy("hotel.name", "ASC")
+                .getMany();
 
-            res.json({
-                status: 'success',
-                data: hotels.map(hotel => ({
+            // Calculate average rating for each hotel
+            const hotelsWithRating = hotels.map(hotel => {
+                let totalRating = 0;
+                let totalReviews = 0;
+
+                hotel.rooms.forEach(room => {
+                    if (room.reviews && room.reviews.length > 0) {
+                        const roomRating = room.reviews.reduce((sum, review) => sum + review.rating, 0) / room.reviews.length;
+                        totalRating += roomRating;
+                        totalReviews++;
+                    }
+                });
+
+                const averageRating = totalReviews > 0 ? totalRating / totalReviews : 0;
+
+                return {
                     id: hotel.id,
                     name: hotel.name,
                     city: hotel.city,
                     address: hotel.address,
                     description: hotel.description,
-                    roomCount: hotel.rooms.length
-                }))
+                    rating: averageRating,
+                    totalRooms: hotel.rooms.length,
+                    totalReviews: totalReviews
+                };
+            });
+
+            res.json({
+                status: 'success',
+                data: hotelsWithRating
             });
         } catch (error) {
             next(error);
@@ -74,14 +96,29 @@ class HotelController {
             const hotelRepo = AppDataSource.getRepository(Hotel);
             const { id } = req.params;
 
-            const hotel = await hotelRepo.findOne({
-                where: { id: parseInt(id) },
-                relations: ['rooms']
-            });
+            const hotel = await hotelRepo.createQueryBuilder("hotel")
+                .leftJoinAndSelect("hotel.rooms", "room")
+                .leftJoinAndSelect("room.reviews", "review")
+                .where("hotel.id = :id", { id: parseInt(id) })
+                .getOne();
 
             if (!hotel) {
                 throw new AppError("Hotel not found", 404);
             }
+
+            // Calculate average rating for the hotel
+            let totalRating = 0;
+            let totalReviews = 0;
+
+            hotel.rooms.forEach(room => {
+                if (room.reviews && room.reviews.length > 0) {
+                    const roomRating = room.reviews.reduce((sum, review) => sum + review.rating, 0) / room.reviews.length;
+                    totalRating += roomRating;
+                    totalReviews++;
+                }
+            });
+
+            const averageRating = totalReviews > 0 ? totalRating / totalReviews : 0;
 
             res.json({
                 status: 'success',
@@ -91,13 +128,21 @@ class HotelController {
                     city: hotel.city,
                     address: hotel.address,
                     description: hotel.description,
+                    rating: averageRating,
+                    totalRooms: hotel.rooms.length,
+                    totalReviews: totalReviews,
                     rooms: hotel.rooms.map(room => ({
                         id: room.id,
                         roomNumber: room.roomNumber,
                         type: room.type,
                         price: room.price,
                         capacity: room.capacity,
-                        status: room.status
+                        status: room.status,
+                        description: room.description,
+                        rating: room.reviews && room.reviews.length > 0 
+                            ? room.reviews.reduce((sum, review) => sum + review.rating, 0) / room.reviews.length 
+                            : 0,
+                        reviewCount: room.reviews?.length || 0
                     }))
                 }
             });
@@ -131,27 +176,36 @@ class HotelController {
                 throw new AppError("Hotel not found", 404);
             }
 
-            // Only include properties that are explicitly provided in the request body
+            // Update only provided fields
             const updates = {};
-            Object.keys(req.body).forEach(key => {
-                if (req.body[key] !== null && req.body[key] !== undefined) {
-                    updates[key] = req.body[key];
+            Object.keys(updateHotelDto).forEach(key => {
+                if (updateHotelDto[key] !== undefined) {
+                    updates[key] = updateHotelDto[key];
                 }
             });
 
-            if (Object.keys(updates).length === 0) {
-                return res.status(400).json({
-                    status: 'error',
-                    message: 'No valid fields provided for update'
-                });
-            }
-
             await hotelRepo.update(id, updates);
 
-            const updatedHotel = await hotelRepo.findOne({
-                where: { id: parseInt(id) },
-                relations: ['rooms']
+            // Get updated hotel with rooms and reviews to calculate new rating
+            const updatedHotel = await hotelRepo.createQueryBuilder("hotel")
+                .leftJoinAndSelect("hotel.rooms", "room")
+                .leftJoinAndSelect("room.reviews", "review")
+                .where("hotel.id = :id", { id: parseInt(id) })
+                .getOne();
+
+            // Calculate average rating
+            let totalRating = 0;
+            let totalReviews = 0;
+
+            updatedHotel.rooms.forEach(room => {
+                if (room.reviews && room.reviews.length > 0) {
+                    const roomRating = room.reviews.reduce((sum, review) => sum + review.rating, 0) / room.reviews.length;
+                    totalRating += roomRating;
+                    totalReviews++;
+                }
             });
+
+            const averageRating = totalReviews > 0 ? totalRating / totalReviews : 0;
 
             res.json({
                 status: 'success',
@@ -161,7 +215,9 @@ class HotelController {
                     city: updatedHotel.city,
                     address: updatedHotel.address,
                     description: updatedHotel.description,
-                    roomCount: updatedHotel.rooms.length
+                    rating: averageRating,
+                    totalRooms: updatedHotel.rooms.length,
+                    totalReviews: totalReviews
                 }
             });
         } catch (error) {
